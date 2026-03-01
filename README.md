@@ -7,14 +7,14 @@ Suggests GNU/Linux terminal commands from natural language using AI.
 > [!WARNING]
 > For the automatic copy to clipboard feature to work, you must have the ‘xsel’ and ‘xclip’ packages installed on your system.
 
-[How to get personal Google Gemini API key?](https://github.com/mbrell/c0admin/blob/main/how-to-get-gemini-api-key.md)
+[How to get personal Google Gemini API key?](https://github.com/ufuayk/c0admin/blob/main/how-to-get-gemini-api-key.md)
 
 ## Installation
 
 To install `c0admin` system-wide on GNU/Linux:
 
 ```bash
-curl -s https://raw.githubusercontent.com/mbrell/c0admin/main/install.sh -o install.sh && bash install.sh
+curl -s https://raw.githubusercontent.com/ufuayk/c0admin/main/install.sh -o install.sh && bash install.sh
 ```
 This will:
 
@@ -40,7 +40,7 @@ c0admin
 
 ## Custom System Instructions
 
-From the [system-instructions](https://github.com/mbrell/c0admin-system-instructions) repo you can see all the community-created system instructions.
+From the [system-instructions](https://github.com/ufuayk/c0admin-system-instructions) repo you can see all the community-created system instructions.
 
 We welcome your contributions on this issue.
 
@@ -51,7 +51,3 @@ We welcome your contributions on this issue.
 3. Commit your changes (`git commit -m 'Add amazing feature'`)
 4. Push to the branch (`git push origin feature/amazing-feature`)
 5. Open a Pull Request
-
----
-
-c0admin is an Mbrell project. 💧

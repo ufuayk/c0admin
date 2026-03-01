@@ -15,7 +15,7 @@ import time
 init()
 
 CUSTOM_INSTRUCTION_PATH = "custom_instruction.txt"
-DEFAULT_INSTRUCTION_URL = "https://raw.githubusercontent.com/mbrell/c0admin-system-instructions/refs/heads/main/instructions/default.txt"
+DEFAULT_INSTRUCTION_URL = "https://raw.githubusercontent.com/ufuayk/c0admin-system-instructions/refs/heads/main/instructions/default.txt"
 
 def validate_api_key_format(api_key):
     return api_key and len(api_key) > 10
