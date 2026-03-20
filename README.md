@@ -1,4 +1,4 @@
-# c0admin 🐧
+# c0admin // <img src="https://raw.githubusercontent.com/RUBIYC/brand-content/refs/heads/main/rubiyc-badge.svg" alt="forged in RUBIYC" height="24">
 
 Suggests GNU/Linux terminal commands from natural language using AI.
 
