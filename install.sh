@@ -10,12 +10,14 @@ EXECUTABLE_NAME="c0admin"
 LAUNCHER_PATH="/usr/local/bin/$EXECUTABLE_NAME"
 REPO_URL="https://github.com/ufuayk/c0admin.git"
 
+# ---------- helpers ----------
 info()  { echo -e "\033[1;34m[*]\033[0m $1"; }
 ok()    { echo -e "\033[1;32m[+]\033[0m $1"; }
 warn()  { echo -e "\033[1;33m[!]\033[0m $1"; }
 err()   { echo -e "\033[1;31m[x]\033[0m $1" >&2; }
 
 need_sudo() {
+    # macOS Homebrew calls should NOT run as root
     if [ "$OS" = "macos" ]; then
         "$@"
     else
@@ -27,6 +29,7 @@ need_sudo() {
     fi
 }
 
+# ---------- OS / package manager detection ----------
 detect_os() {
     case "$(uname -s)" in
         Darwin)
@@ -67,6 +70,7 @@ detect_os() {
     esac
 }
 
+# ---------- dependency installation ----------
 install_dependencies() {
     info "Installing system dependencies (python3, venv, pip, git)..."
 
@@ -94,13 +98,18 @@ install_dependencies() {
             if ! command -v brew >/dev/null 2>&1; then
                 warn "Homebrew not found. Installing Homebrew..."
                 /bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)"
+                # make sure brew is on PATH for the rest of this script (Apple Silicon default)
                 if [ -x /opt/homebrew/bin/brew ]; then
                     eval "$(/opt/homebrew/bin/brew shellenv)"
                 elif [ -x /usr/local/bin/brew ]; then
                     eval "$(/usr/local/bin/brew shellenv)"
                 fi
             fi
-            brew install python git || true
+            brew install git || true
+            # Pin to Python 3.12: some pinned deps in requirements.txt (e.g. pydantic_core)
+            # don't have prebuilt wheels yet for the very latest CPython (e.g. 3.14),
+            # which forces a source/Rust build that fails on most machines.
+            brew install python@3.12 || true
             ;;
         unknown)
             err "Could not detect a supported package manager."
@@ -112,7 +121,27 @@ install_dependencies() {
     ok "System dependencies installed."
 }
 
+# ---------- python binary detection ----------
 detect_python() {
+    # On macOS prefer the pinned python@3.12 from Homebrew, since some pinned
+    # dependencies (e.g. pydantic_core) don't yet ship wheels for the newest
+    # CPython and fail to build from source.
+    if [ "$OS" = "macos" ]; then
+        for candidate in \
+            "/opt/homebrew/opt/python@3.12/bin/python3.12" \
+            "/usr/local/opt/python@3.12/bin/python3.12"; do
+            if [ -x "$candidate" ]; then
+                PYTHON_BIN="$candidate"
+                return
+            fi
+        done
+        if command -v python3.12 >/dev/null 2>&1; then
+            PYTHON_BIN="python3.12"
+            return
+        fi
+        warn "python@3.12 not found, falling back to default python3 (may be too new for some dependencies)."
+    fi
+
     if command -v python3 >/dev/null 2>&1; then
         PYTHON_BIN="python3"
     elif command -v python >/dev/null 2>&1; then
@@ -123,6 +152,7 @@ detect_python() {
     fi
 }
 
+# ---------- main install ----------
 main() {
     echo "======================================="
     echo "        c0admin universal installer"
