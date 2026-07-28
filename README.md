@@ -11,7 +11,7 @@ Suggests GNU/Linux terminal commands from natural language using AI.
 
 ## Installation
 
-To install `c0admin` system-wide on GNU/Linux:
+To install `c0admin` system-wide with `c0admin universal installer`:
 
 ```bash
 curl -s https://raw.githubusercontent.com/ufuayk/c0admin/main/install.sh -o install.sh && bash install.sh
