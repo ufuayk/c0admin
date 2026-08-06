@@ -1,210 +1,215 @@
-import base64
 import os
-from google import genai
-from google.genai import types
-import threading
-import itertools
+import readline
 import sys
-import time
-import requests
-import webbrowser
-import pyperclip
-from colorama import init, Fore, Style
-import time
+import traceback
 
-init()
+from colorama import Style
 
-CUSTOM_INSTRUCTION_PATH = "custom_instruction.txt"
-DEFAULT_INSTRUCTION_URL = "https://raw.githubusercontent.com/ufuayk/c0admin-system-instructions/refs/heads/main/instructions/default.txt"
+from c0admin.ai import AIClient
+from c0admin.apikey import ensure_api_key, delete_api_key
+from c0admin.config import (
+    CUSTOM_INSTRUCTION_PATH,
+    DEBUG_LOG_PATH,
+    INPUT_HISTORY_PATH,
+    load_config,
+    save_config,
+)
+from c0admin.history import show_history
+from c0admin.output import Output
+from c0admin.theme import list_themes
+from c0admin.modules.chat import ChatModule
+from c0admin.modules.exec import ExecModule, extract_commands
+from c0admin.modules.health import HealthModule
+from c0admin.modules.network import NetworkModule
+from c0admin.modules.processes import ProcessModule
 
-def validate_api_key_format(api_key):
-    return api_key and len(api_key) > 10
-def ensure_api_key():
-    api_key = os.environ.get("GEMINI_API_KEY")
-    env_path = ".env"
-    if not api_key:
-        if os.path.exists(env_path):
-            try:
-                with open(env_path) as f:
-                    for line in f:
-                        if line.startswith("GEMINI_API_KEY="):
-                            api_key = line.strip().split("=", 1)[1]
-                            break
-            except Exception as e:
-                print(f"Warning: Could not read {env_path}.")
-        if not api_key:
-            while True:
-                api_key = input("Enter your GEMINI_API_KEY: ").strip()
-                if validate_api_key_format(api_key):
-                    break
-                else:
-                    print("Invalid API key format. Please try again.")
-            try:
-                with open(env_path, "a") as f:
-                    f.write(f"GEMINI_API_KEY={api_key}\n")
-                print("API key saved successfully.")
-            except Exception as e:
-                print(f"Warning: Could not save API key to {env_path}.")
-                print("You may need to re-enter the API key next time.")
-    elif not validate_api_key_format(api_key):
-        print("Warning: Invalid API key format found in environment.")
-    os.environ["GEMINI_API_KEY"] = api_key
-    return api_key
+HELP_ROWS = [
+    ("/help", "Show this help"),
+    ("/exit", "Exit the app safely"),
+    ("/del", "Delete the GEMINI API KEY"),
+    ("/history", "Display the command history"),
+    ("/clear", "Clear the current session conversation history"),
+    ("/setinst <url>", "Set a custom system instruction URL"),
+    ("/resetinst", "Reset system instruction to default"),
+    ("/theme [name|list]", "Show/set theme"),
+    ("/json [on|off]", "Toggle JSON output mode"),
+    ("/debug [on|off]", "Toggle verbose debug output"),
+    ("/health", "System health report (AI analyzed)"),
+    ("/ps top|list|kill|analyze", "Process manager"),
+    ("/net ping|trace|dns|check", "Network diagnostics"),
+    ("/run <command>", "Run a command after AI safety check"),
+]
 
-def delete_api_key():
-    env_path = ".env"
-    try:
-        if os.path.exists(env_path):
-            os.remove(env_path)
-            print("API key file deleted.")
-        else:
-            print("No API key file found.")
-    except Exception as e:
-        print(f"Error deleting API key file.")
-    os.environ.pop("GEMINI_API_KEY", None)
-    print("API key deleted from environment.")
 
-def spinner(stop_event):
-    for c in itertools.cycle(['|', '/', '-', '\\']):
-        if stop_event.is_set():
-            break
-        sys.stdout.write('\rLoading... ' + c)
-        sys.stdout.flush()
-        time.sleep(0.1)
-    sys.stdout.write('\r' + ' ' * 20 + '\r')
+def print_help(out):
+    out.section("c0admin commands")
+    rows = [[out.color("accent", cmd), desc] for cmd, desc in HELP_ROWS]
+    out.table(["Command", "Description"], rows)
+    print()
+    print(out.color("dim", "Anything else is asked to the AI as a command suggestion."))
 
-def print_ascii():
-    print(Fore.CYAN + r"""
-  ▄▖   ▌   ▘  
+
+def print_banner(out):
+    print(out.color("title", r"""
+  ▄▖   ▌   ▘
 ▛▘▛▌▀▌▛▌▛▛▌▌▛▌
-▙▖█▌█▌▙▌▌▌▌▌▌▌                              
-    """ + Style.RESET_ALL)
+▙▖█▌█▌▙▌▌▌▌▌▌▌
+    """))
 
-current_time = time.strftime("%Y-%m-%d %H:%M:%S", time.localtime()) 
 
-def log_history(answer):
-    with open("history.txt", "a", encoding="utf-8") as f:
-        f.write(f"{current_time}: {answer}\n")
-
-def fetch_instruction_text(url):
+def log_error(out, e, debug):
     try:
-        resp = requests.get(url, timeout=10)
-        resp.raise_for_status()
-        return resp.text
-    except Exception as e:
-        print(f"Warning: Failed to fetch system instruction from {url}. Error: {e}")
-        print("Attempting to fetch default instruction...")
-        try:
-            resp = requests.get(DEFAULT_INSTRUCTION_URL, timeout=10)
-            resp.raise_for_status()
-            print("Default system instruction fetched successfully.")
-            return resp.text
-        except Exception as fallback_error:
-            print(f"Failed to fetch default instruction: {fallback_error}")
-            raise ValueError(f"Failed to fetch default instruction: {fallback_error}.")
+        with open(DEBUG_LOG_PATH, "a", encoding="utf-8") as f:
+            f.write("=" * 60 + "\n")
+            traceback.print_exc(file=f)
+    except Exception:
+        pass
+    if debug:
+        traceback.print_exc()
+    else:
+        out.error_box("Unexpected error", e)
 
-def generate():
-    print_ascii()
+
+def setup_readline():
+    readline.set_history_length(500)
+    try:
+        readline.read_history_file(INPUT_HISTORY_PATH)
+    except FileNotFoundError:
+        pass
+    except Exception:
+        pass
+
+
+def clear_screen():
+    print("\033[2J\033[H", end="", flush=True)
+
+
+def save_readline():
+    try:
+        readline.write_history_file(INPUT_HISTORY_PATH)
+    except Exception:
+        pass
+
+
+def main():
+    debug = "--debug" in sys.argv
+    cfg = load_config()
+    cfg["debug"] = debug
+    out = Output(cfg)
+
+    print_banner(out)
+
     api_key = ensure_api_key()
     if not api_key:
-        raise ValueError("Missing GEMINI_API_KEY environment variable.")
-    client = genai.Client(
-        api_key=api_key,
-    )
+        print("Missing GEMINI_API_KEY.")
+        return
+
+    ai = AIClient(api_key, cfg)
+
+    chat = ChatModule(ai, out, cfg, model=cfg["main_model"])
+    exec_mod = ExecModule(ai, out, cfg)
+    health = HealthModule(ai, out, cfg)
+    procs = ProcessModule(ai, out, cfg)
+    network = NetworkModule(ai, out, cfg)
+
+    def handle_run_prompt(answer_text):
+        commands = extract_commands(answer_text)
+        if commands:
+            choice = input(f"\nRun suggested command '{commands[0]}'? [y/N] ").strip().lower()
+            if choice in ("y", "yes"):
+                exec_mod.run(commands[0])
+
+    chat.on_suggested_command = handle_run_prompt
+    setup_readline()
+
     try:
         while True:
-            question = input("> ")
-            if question.strip() == "/del":
-                delete_api_key()
-                return
-            elif question.strip() == "/":
-                print("Type your question or command.")
+            try:
+                question = input(out.prompt_line())
+            except EOFError:
+                print()
+                break
+            q = question.strip()
+            if not q:
                 continue
-            elif question.strip() == "/exit":
+
+            if q in ("/exit", "exit"):
                 print("Exiting...")
-                return
-            elif question.strip() == "/history":
-                if not os.path.exists("history.txt"):
-                    print("History not found.")
-                    continue
-                os.system("cat history.txt")
-                continue
-            elif question.strip() == "/help":
-                print("""/del — Delete the GEMINI API KEY.
-/exit — Exit the app safely.
-/history — Displays the command history (history.txt).
-/setinst <url> — Set a custom system instruction from a given URL.
-/resetinst — Reset system instruction to the default one.""")
-                continue
-            elif question.strip().startswith("/setinst "):
-                custom_link = question.strip().split(" ", 1)[1]
+                break
+            elif q == "/help":
+                print_help(out)
+            elif q == "/del":
+                delete_api_key()
+                break
+            elif q == "/history":
+                show_history()
+            elif q == "/clear":
+                clear_screen()
+                chat.clear_session()
+            elif q.startswith("/setinst "):
+                custom_link = q.split(" ", 1)[1]
                 with open(CUSTOM_INSTRUCTION_PATH, "w") as f:
                     f.write(custom_link)
                 print("Custom instruction URL saved.")
-                continue
-            elif question.strip() == "/resetinst":
+            elif q == "/resetinst":
                 if os.path.exists(CUSTOM_INSTRUCTION_PATH):
                     os.remove(CUSTOM_INSTRUCTION_PATH)
                     print("Custom instruction reset to default.")
                 else:
                     print("No custom instruction set.")
-                continue
-
-            if os.path.exists(CUSTOM_INSTRUCTION_PATH):
-                with open(CUSTOM_INSTRUCTION_PATH, "r") as f:
-                    system_instruction_url = f.read().strip()
-            else:
-                system_instruction_url = DEFAULT_INSTRUCTION_URL
-
-            system_instruction_text = fetch_instruction_text(system_instruction_url)
-
-            model = "gemini-3-flash-preview"
-            contents = [
-                types.Content(
-                    role="user",
-                    parts=[
-                        types.Part.from_text(text=question),
-                    ],
-                ),
-            ]
-            generate_content_config = types.GenerateContentConfig(
-                response_mime_type="text/plain",
-                system_instruction=[
-                    types.Part.from_text(text=system_instruction_text),
-                ],
-            )
-
-            stop_event = threading.Event()
-            t = threading.Thread(target=spinner, args=(stop_event,))
-            t.start()
-
-            answer_text = ""
-            try:
-                for chunk in client.models.generate_content_stream(
-                    model=model,
-                    contents=contents,
-                    config=generate_content_config,
-                ):
-                    stop_event.set()
-                    t.join()
-                    print(chunk.text, end="")
-                    answer_text += chunk.text
-                    try:
-                        pyperclip.copy(answer_text)
-                    except pyperclip.PyperclipException:
-                        pass
-            except Exception as e:
-                if "API key not valid" in str(e):
-                    print("\nAPI key not valid. Please check your GEMINI_API_KEY or type /del to reset.")
+            elif q.startswith("/theme"):
+                parts = q.split()
+                if len(parts) == 1:
+                    out.info(f"Current theme: {cfg.get('theme')}")
+                    out.info("Available: " + ", ".join(list_themes()))
+                elif parts[1] == "list":
+                    out.info("Available themes: " + ", ".join(list_themes()))
+                elif parts[1] in list_themes():
+                    cfg["theme"] = parts[1]
+                    save_config(cfg)
+                    out.set_theme(parts[1])
+                    print("Theme set to " + parts[1])
                 else:
-                    print("An error occurred:", str(e))
-            finally:
-                log_history(answer_text)
-                stop_event.set()
-                t.join()
-                print()
+                    out.error("Unknown theme. Available: " + ", ".join(list_themes()))
+            elif q.startswith("/json"):
+                parts = q.split()
+                if len(parts) == 1:
+                    out.info(f"JSON output: {'on' if cfg.get('json_output') else 'off'}")
+                elif parts[1] in ("on", "off"):
+                    cfg["json_output"] = parts[1] == "on"
+                    save_config(cfg)
+                    print("JSON output: " + parts[1])
+                else:
+                    out.warn("Usage: /json on|off")
+            elif q.startswith("/debug"):
+                parts = q.split()
+                if len(parts) == 1:
+                    out.info(f"Debug: {'on' if debug else 'off'}")
+                elif parts[1] in ("on", "off"):
+                    debug = parts[1] == "on"
+                    cfg["debug"] = debug
+                    print("Debug: " + parts[1])
+                else:
+                    out.warn("Usage: /debug on|off")
+            elif q.startswith("/health"):
+                health.run()
+            elif q.startswith("/ps"):
+                procs.run(q.split()[1:])
+            elif q.startswith("/net"):
+                network.run(q.split()[1:])
+            elif q.startswith("/run "):
+                exec_mod.run(q[5:].strip())
+            elif q == "clear":
+                clear_screen()
+            else:
+                chat.ask(q)
     except KeyboardInterrupt:
         print("\nExiting..")
+    except Exception as e:
+        log_error(out, e, debug)
+    finally:
+        save_readline()
+
 
 if __name__ == "__main__":
-    generate()
+    main()

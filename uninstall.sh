@@ -10,7 +10,6 @@ if [[ "$confirm" != "y" ]]; then
     echo "Uninstallation cancelled."
     exit 1
 fi
-
 if [ -d "$INSTALL_DIR" ]; then
     echo "Removing $INSTALL_DIR..."
     rm -rf "$INSTALL_DIR"
