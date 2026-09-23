@@ -2,19 +2,19 @@
 
 Suggests GNU/Linux terminal commands from natural language using AI, with an AI-assisted sysadmin toolkit.
 
-![c0admin Banner](c0admin-banner.png)
+![c0admin Banner](assets/c0admin-banner.png)
 
 > [!WARNING]
 > For the automatic copy to clipboard feature to work, you must have the ‘xsel’ and ‘xclip’ packages installed on your system.
 
-[How to get personal Google Gemini API key?](https://github.com/ufuayk/c0admin/blob/main/how-to-get-gemini-api-key.md)
+[How to get personal Google Gemini API key?](https://github.com/ufuayk/c0admin/blob/main/docs/how-to-get-gemini-api-key.md)
 
 ## Installation
 
 To install `c0admin` system-wide with the universal installer:
 
 ```bash
-curl -s https://raw.githubusercontent.com/ufuayk/c0admin/main/install.sh -o install.sh && bash install.sh
+curl -s https://raw.githubusercontent.com/ufuayk/c0admin/main/scripts/install.sh -o install.sh && bash install.sh
 ```
 
 This will:
