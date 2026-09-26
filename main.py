@@ -11,6 +11,7 @@ from c0admin.config import (
     CUSTOM_INSTRUCTION_PATH,
     DEBUG_LOG_PATH,
     INPUT_HISTORY_PATH,
+    MODEL_OPTIONS,
     load_config,
     save_config,
 )
@@ -32,6 +33,7 @@ HELP_ROWS = [
     ("/setinst <url>", "Set a custom system instruction URL"),
     ("/resetinst", "Reset system instruction to default"),
     ("/theme [name|list]", "Show/set theme"),
+    ("/model [main|report] <id>|list", "Show/list/set AI model"),
     ("/json [on|off]", "Toggle JSON output mode"),
     ("/debug [on|off]", "Toggle verbose debug output"),
     ("/health", "System health report (AI analyzed)"),
@@ -122,6 +124,36 @@ def main():
     chat.on_suggested_command = handle_run_prompt
     setup_readline()
 
+    def set_model(which, name):
+        if name not in MODEL_OPTIONS:
+            out.error(f"Unknown model '{name}'. See /model list")
+            return
+        if which == "main":
+            cfg["main_model"] = name
+            chat.model = name
+        elif which == "report":
+            cfg["report_model"] = name
+            for m in (exec_mod, health, procs, network):
+                m.model = name
+        else:
+            out.warn("Usage: /model main|report <id>")
+            return
+        save_config(cfg)
+        out.ok(f"{which} model set to {name}")
+
+    def handle_model(parts):
+        if not parts:
+            out.info(f"main model   : {cfg['main_model']}")
+            out.info(f"report model : {cfg['report_model']}")
+            out.info(f"thinking     : {cfg.get('thinking')}")
+            out.info("Available: " + ", ".join(MODEL_OPTIONS))
+        elif parts[0] == "list":
+            out.info("Available models: " + ", ".join(MODEL_OPTIONS))
+        elif len(parts) == 2 and parts[0] in ("main", "report"):
+            set_model(parts[0], parts[1])
+        else:
+            out.warn("Usage: /model [main|report] <id> | /model list")
+
     try:
         while True:
             try:
@@ -171,6 +203,8 @@ def main():
                     print("Theme set to " + parts[1])
                 else:
                     out.error("Unknown theme. Available: " + ", ".join(list_themes()))
+            elif q.startswith("/model"):
+                handle_model(q.split()[1:])
             elif q.startswith("/json"):
                 parts = q.split()
                 if len(parts) == 1:

@@ -14,38 +14,53 @@ DEFAULT_INSTRUCTION_URL = (
     "refs/heads/main/instructions/default.txt"
 )
 
+# Current Gemini model options (September 2026).
+# Order matters: it is the preferred fallback chain in AIClient.
+MODEL_OPTIONS = [
+    "gemini-3.8-flash",
+    "gemini-3.7-flash",
+    "gemini-3.6-flash",
+    "gemini-3.5-flash",
+    "gemini-3.5-flash-lite",
+    "gemini-3.1-flash-lite",
+    "gemini-3.1-pro-preview",
+    "gemini-3-flash-preview",
+]
+
 DEPRECATED_MODELS = {
     "gemini-2.0-flash",
     "gemini-2.0-flash-lite",
     "gemini-2.5-flash",
     "gemini-2.5-flash-lite",
+    "gemini-2.5-flash-preview-05-2025",
+    "gemini-2.5-flash-lite-preview-09-2025",
+    "gemini-3.1-flash-lite-preview",
 }
 
 DEFAULTS = {
     "theme": "default",
     "json_output": False,
-    "main_model": "gemini-3.1-flash-lite",
-    "report_model": "gemini-3.1-flash-lite",
-    "thinking": "minimal",
-    "config_version": 3,
-    "model_fallbacks": [
-        "gemini-3.1-flash-lite",
-        "gemini-3.5-flash-lite",
-        "gemini-3.6-flash",
-        "gemini-3.5-flash",
-        "gemini-3-flash-preview",
-    ],
+    "main_model": "gemini-3.8-flash",
+    "report_model": "gemini-3.5-flash-lite",
+    "thinking": "medium",
+    "config_version": 4,
+    "model_fallbacks": list(MODEL_OPTIONS),
 }
 
 
 def _migrate(data):
     if not isinstance(data, dict):
         return {}
+    old_version = data.get("config_version", 0)
     for key in ("main_model", "report_model"):
         if data.get(key) in DEPRECATED_MODELS:
             data[key] = DEFAULTS[key]
     if "model_fallbacks" in data and not isinstance(data["model_fallbacks"], list):
         data.pop("model_fallbacks", None)
+    # gemini-3.8-flash / gemini-3.7-flash reject a "minimal" thinking level,
+    # so upgrade stale "minimal" configs to the new default "medium".
+    if old_version < 4 and data.get("thinking") == "minimal":
+        data["thinking"] = "medium"
     return data
 
 
